@@ -2,7 +2,7 @@
 
 An offline Windows desktop editor for colorizing manga. Choose a swatch, mark a location, compare the result and accept or discard the trial. The editor keeps the original page dimensions and can preserve its linework and halftones. [Инструкция на русском](README.ru.md)
 
-**Project direction: d3l3tanttao. Application implementation, UI and testing: OpenAI Codex (AI assistant).** The neural colorizer and its color-hint input come from **qweasdd/manga-colorization-v2**. The desktop UI, selection tools, color transfer onto the scan, project/version management and export were implemented for this application. [Contributions and upstream provenance](CREDITS.md) · [Licensing and publication status](LICENSING.md)
+**d3l3tanttao** directs the project. **OpenAI Codex** (AI assistant) implemented and tested the desktop application. The neural colorizer and its color-hint input come from **qweasdd/manga-colorization-v2**. The desktop UI, selection tools, color transfer onto the scan, project/version management and export were implemented for this application. The original application is MIT-licensed. [Contributions](CREDITS.md) · [MIT License](LICENSE) · [Third-party terms](LICENSING.md)
 
 ![Coloring the sample jacket in Manga Studio](docs/workspace-en.png)
 

@@ -1,0 +1,5 @@
+# Install the CUDA torch/torchvision pair separately, as described in README.md.
+PySide6-Essentials==6.9.3
+opencv-python==4.11.0.86
+numpy==2.2.6
+pillow==12.3.0

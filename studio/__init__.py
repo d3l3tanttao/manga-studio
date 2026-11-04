@@ -1,0 +1,1 @@
+"""Desktop manga colorization studio."""

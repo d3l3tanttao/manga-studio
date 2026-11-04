@@ -1,0 +1,13 @@
+.venv/
+.models/
+.upstream/
+__pycache__/
+.studio.ini
+.chapters/
+.studio-*.ini
+.runtime-path
+results/
+exports/
+*.exe
+*.lock
+.release-tools/

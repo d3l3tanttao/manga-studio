@@ -30,7 +30,7 @@ Manga Studio ships 188 application messages for each of 25 locales. Catalogs are
 | zh-Hans | 简体中文 | Passed | Passed | Pending |
 | zh-Hant | 繁體中文 | Passed | | Pending |
 
-Technical checks cover equal message sets, valid substitutions, glyph availability with installed Windows fonts, startup, editor controls and access to pinned actions in a compact window. The extended scenario samples colors, checks palette selection, paints with brush and lasso, discards and accepts trials, and compares export pixels. Automated checks do not assess native fluency. The English, Russian, German, Arabic and Chinese editor workflows were also inspected with the bundled sample. The catalogs were AI-assisted; editorial terminology was reviewed by Codex.
+Technical checks cover equal message sets, valid substitutions, glyph availability with installed Windows fonts, startup, editor controls and access to pinned actions in a compact window. The extended scenario samples colors, checks palette selection, paints with brush and lasso, discards and accepts trials, and compares export pixels. Automated checks do not assess native fluency. The English, Russian, German, Arabic and Chinese editor workflows were also tested with the bundled sample. Codex reviewed the editor terminology across the AI-assisted catalogs.
 
 ## Translator glossary
 

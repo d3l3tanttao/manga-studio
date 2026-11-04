@@ -46,7 +46,7 @@ if ($DownloadWeights) {
         if (!(Test-Path -LiteralPath $target)) {
             $temp = Join-Path $weights ([guid]::NewGuid().ToString()+'.tmp')
             try {
-                & curl.exe --fail --location --retry 2 --output $temp ("https://drive.usercontent.google.com/download?id="+$file[1]+"&export=download&confirm=t")
+                & curl.exe --fail --silent --show-error --location --retry 2 --retry-all-errors --connect-timeout 20 --max-time 600 --output $temp ("https://drive.usercontent.google.com/download?id="+$file[1]+"&export=download&confirm=t")
                 Check-Exit
                 if ((Get-FileHash -LiteralPath $temp).Hash -ne $file[2]) { throw "Invalid checkpoint: $($file[0])" }
                 Move-Item -LiteralPath $temp -Destination $target

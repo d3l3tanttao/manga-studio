@@ -82,6 +82,8 @@ def main(artifacts):
             idle(w)
             assert w.done==2 and w.errors==1 and inference.call_count==2
             assert set(stages)>={"Раскраска","Сохранение"}
+            import torch
+            assert w.engine.model.device == ("cuda" if torch.cuda.is_available() else "cpu")
             w.list.setCurrentRow(1); app.processEvents()
             assert w.issue.isVisible() and "изображение" in w.issue.text()
             Image.open(sample).convert("RGB").save(broken)
@@ -105,7 +107,7 @@ def main(artifacts):
             with patch.object(QFileDialog,"getOpenFileNames",return_value=([], "")) as dialog:
                 w.open_files()
                 assert dialog.call_args.args[2]==str(group)
-            print("PASS 16-bit 256-level import, example, GPU, ordinal insertion, retry, export preflight",flush=True)
+            print(f"PASS 16-bit import, example, {w.device.text()}, insertion, retry, export preflight",flush=True)
 
             w.list.setCurrentRow(1); idle(w)
             p=w.current()
@@ -153,8 +155,12 @@ def main(artifacts):
             assert p.trial and w.one_btn.text().startswith("Применить подсказки")
             w.one_btn.click(); idle(w)
             assert p.trial and len(p.versions)==2
+            assert not w.marks.isChecked() and w.view.currentData()=="previous"
+            suggested=pixels(w.canvas.result)
+            assert not np.array_equal(suggested,after)
             w.one_btn.click(); idle(w)
             assert inference.call_count==5 and len(p.versions)==3
+            assert np.array_equal(suggested,np.asarray(Image.open(version_path(w.project,p.version()))))
             w.choose_version(1); idle(w)
             assert p.selected==1 and np.array_equal(pixels(w.canvas.result),after)
             w.apply_all(); assert all(page.intensity==84 for page in w.pages.values())

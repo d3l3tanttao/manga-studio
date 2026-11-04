@@ -29,7 +29,7 @@ class Window(QMainWindow):
     def __init__(self, config=None):
         super().__init__()
         self.config = config if config is not None else QSettings(str(ROOT / ".studio-1.2.ini"), QSettings.IniFormat)
-        if config is None and not self.config.contains("device"):
+        if config is None and not self.config.allKeys():
             old = QSettings(str(ROOT / ".studio.ini"), QSettings.IniFormat)
             for key in old.allKeys():
                 self.config.setValue(key,old.value(key))
@@ -443,8 +443,11 @@ class Window(QMainWindow):
             if value == self.canvas.color.name() and (name==self.active_swatch or not self.active_swatch):
                 self.palette_box.setCurrentItem(item)
         self.hex_box.setText(self.canvas.color.name().upper())
-        self.swatch.setText(tr("Цвет   {0}", self.canvas.color.name().upper()))
-        self.swatch.setStyleSheet(f"border-left: 8px solid {self.canvas.color.name()}")
+        chip = QPixmap(18,18)
+        chip.fill(self.canvas.color)
+        self.swatch.setText(tr("Выбрать цвет"))
+        self.swatch.setIcon(QIcon(chip))
+        self.set_color_btn.setIcon(QIcon(chip))
         self.loading = False
 
     def refresh(self):
@@ -479,7 +482,6 @@ class Window(QMainWindow):
                 self.one_btn.setText(tr("Применить подсказки · {0}", n))
         self.set_color_btn.setEnabled(editable)
         self.color_note.setText(tr("Отметьте область на странице.") if self.canvas.tool!="view" else tr("Выберите оттенок и отметьте место."))
-        self.set_color_btn.setStyleSheet(f"border-left: 12px solid {self.canvas.color.name()};")
         self.hex_box.setEnabled(editable)
         self.view.model().item(3).setEnabled(bool(p and p.trial))
         self.export_btn.setEnabled(bool(free and pages))
@@ -725,7 +727,7 @@ class Window(QMainWindow):
             if s.kind == "hint":
                 p.original_base = False
                 self.marks.setChecked(True)
-            elif not p.version() and not self.has_color(p):
+            elif not p.version() and not self.has_color(p) and not any(stroke.kind=="hint" for stroke in p.strokes):
                 p.original_base = True
             name = self.active_swatch if self.palette_colors.get(self.active_swatch)==self.canvas.color.name() else self.canvas.color.name()
             if s.kind=="hint":
@@ -737,10 +739,13 @@ class Window(QMainWindow):
             p.redo.clear()
             self.canvas.update()
             self.changed(s.kind!="hint")
+            if s.kind!="hint":
+                self.status.setText(tr("Проба готова. Сравните и примите или отмените."))
 
     def undo(self):
         p = self.current()
         if p and p.strokes and not self.worker:
+            self.begin_trial(p)
             p.redo.append(p.strokes.pop())
             self.canvas.update()
             self.changed()
@@ -748,26 +753,31 @@ class Window(QMainWindow):
     def redo(self):
         p = self.current()
         if p and p.redo and not self.worker:
+            self.begin_trial(p)
             p.strokes.append(p.redo.pop())
             self.canvas.update()
             self.changed()
 
     def edit_settings(self):
-        dialog = SettingsDialog(self.current().settings if self.current() else self.settings,self)
+        initial = self.current().settings if self.current() else self.settings
+        dialog = SettingsDialog(initial,self)
         if dialog.exec():
             language = dialog.language.currentData()
             previous = self.config.value("language","auto")
             self.config.setValue("language",language)
-            self.settings = dialog.values()
-            for k,val in settings_dict(self.settings).items():
-                self.config.setValue(k,val)
-            for p in self.pages.values():
-                p.settings = self.settings
+            new_settings = dialog.values()
+            if new_settings != initial:
+                self.settings = new_settings
+                for k,val in settings_dict(self.settings).items():
+                    self.config.setValue(k,val)
+                for p in self.pages.values():
+                    p.settings = self.settings
             self.config.sync()
             self.changed()
             if language != previous:
                 self.restart_language = True
                 self.close()
+        dialog.deleteLater()
 
     def about(self):
         dialog = QDialog(self)

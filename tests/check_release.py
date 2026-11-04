@@ -77,6 +77,19 @@ def check_language(app,root,code,artifacts,deep):
             w.rename_color()
         assert w.active_swatch=="Coat blue"
         w.tool.setCurrentIndex(w.tool.findData("paint"));w.diameter.setValue(28)
+        if code=="en":
+            # Light cheek, dark hair and a small area just outside the speech balloon.
+            for x,y in ((0.46,0.34),(0.45,0.17),(0.25,0.12)):
+                center=screen_point(w,x,y)
+                QTest.mouseClick(w.canvas,Qt.LeftButton,pos=center);idle(w)
+                test=page_pixels(w)
+                u,v=w.canvas.normalized(center)
+                iy,ix=round(v*(old.shape[0]-1)),round(u*(old.shape[1]-1))
+                yy,xx=np.ogrid[:old.shape[0],:old.shape[1]]
+                outside=(yy-iy)**2+(xx-ix)**2>16**2
+                assert np.array_equal(test[outside],old[outside]) and not np.array_equal(test,old)
+                w.discard_btn.click();idle(w)
+                assert np.array_equal(page_pixels(w),old)
         w.setFocus();QTest.keyClick(w,Qt.Key_BracketRight);assert w.canvas.diameter==29
         QTest.keyClick(w,Qt.Key_BracketLeft);assert w.canvas.diameter==28
         a,b=screen_point(w,.31,.66),screen_point(w,.33,.70)
@@ -108,6 +121,7 @@ def check_language(app,root,code,artifacts,deep):
             w.tabs.setCurrentIndex(1);w.view.setCurrentIndex(w.view.findData("result"));app.processEvents()
             w.grab().save(str(artifacts/f"{code}.png"))
         # Alt samples without changing the active brush. Out-of-page motion ends the stroke.
+        w.tabs.setCurrentIndex(1)
         w.tool.setCurrentIndex(w.tool.findData("paint"));w.sample_from.setCurrentIndex(1)
         mid=screen_point(w,.33,.7)
         QTest.mouseClick(w.canvas,Qt.LeftButton,Qt.AltModifier,pos=mid)

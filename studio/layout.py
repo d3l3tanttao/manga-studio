@@ -2,7 +2,7 @@ from .i18n import tr
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QAction, QColor, QIcon, QKeySequence, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QMenu, QPushButton,
-                               QProgressBar, QScrollArea, QSizePolicy, QSlider, QSpinBox, QSplitter,
+                               QLayout, QProgressBar, QScrollArea, QSizePolicy, QSlider, QSpinBox, QSplitter,
                                QStackedWidget, QTabWidget, QVBoxLayout, QWidget)
 from .canvas import Canvas
 from .engine import MODES
@@ -54,9 +54,11 @@ def tab(tabs, name):
     scroll.setWidgetResizable(True)
     scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
     w = QWidget()
+    w.setSizePolicy(QSizePolicy.Ignored,QSizePolicy.Preferred)
     scroll.setWidget(w)
     tabs.addTab(scroll, name)
     lay = QVBoxLayout(w)
+    lay.setSizeConstraint(QLayout.SetNoConstraint)
     lay.setContentsMargins(9, 12, 9, 8)
     return lay
 
@@ -232,6 +234,8 @@ def build(w):
                         (tr("Только в выделении · лассо"),"lasso"),(tr("Вернуть оригинал"),"restore"),
                         (tr("Снять восстановление"),"erase"),(tr("Пипетка"),"pick")):
         w.tool.addItem(title,code)
+    w.tool.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+    w.tool.setMinimumContentsLength(8)
     w.tool.currentIndexChanged.connect(w.change_tool)
     edit.addWidget(w.tool)
     w.diameter = QSpinBox()
@@ -258,7 +262,8 @@ def build(w):
     edit.addWidget(w.palette_box)
     w.palette_add = button(tr("Запомнить оттенок…"),w.name_color)
     edit.addWidget(w.palette_add)
-    row(edit,button(tr("Переименовать"),w.rename_color),button(tr("Удалить оттенок"),w.delete_color))
+    edit.addWidget(button(tr("Переименовать"),w.rename_color))
+    edit.addWidget(button(tr("Удалить оттенок"),w.delete_color))
     w.undo_btn = button(tr("Отменить"),w.undo,tip="Ctrl+Z")
     w.redo_btn = button(tr("Вернуть"),w.redo,tip="Ctrl+Y")
     row(edit,w.undo_btn,w.redo_btn)

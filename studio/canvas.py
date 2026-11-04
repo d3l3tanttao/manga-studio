@@ -214,7 +214,7 @@ class Canvas(QWidget):
                     tag = QRectF(side.left()+4, side.top()+4, tag_width, 21)
                     p.fillRect(tag, QColor(28, 29, 39, 210))
                     p.drawText(tag, Qt.AlignCenter, name)
-        if self.show_marks and self.view != "previous":
+        if self.show_marks:
             for stroke in self.strokes:
                 if stroke.kind == "hint":
                     self.paint_stroke(p, rect, stroke)
@@ -266,15 +266,17 @@ class Canvas(QWidget):
     @staticmethod
     def paint_stroke(p, rect, stroke):
         points = [QPointF(rect.left() + x * rect.width(), rect.top() + y * rect.height()) for x, y in stroke.points]
-        p.setPen(QPen(QColor(*stroke.color), max(2, stroke.width * rect.width()),
-                      Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
-        if len(points) == 1:
-            p.drawPoint(points[0])
-        else:
-            path = QPainterPath(points[0])
-            for point in points[1:]:
-                path.lineTo(point)
-            p.drawPath(path)
+        path = QPainterPath(points[0])
+        for point in points[1:]:
+            path.lineTo(point)
+        size = max(2, stroke.width * rect.width())
+        p.setBrush(Qt.NoBrush)
+        for color, diameter in ((QColor("#ffffff"),size+2),(QColor(*stroke.color),size)):
+            p.setPen(QPen(color,diameter,Qt.SolidLine,Qt.RoundCap,Qt.RoundJoin))
+            if len(points)==1:
+                p.drawPoint(points[0])
+            else:
+                p.drawPath(path)
 
     def paint_empty(self, p):
         cx, cy = self.width() / 2, self.height() / 2

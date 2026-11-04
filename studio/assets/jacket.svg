@@ -18,7 +18,7 @@
  <ellipse cx="275" cy="241" rx="7" ry="9" fill="#435058"/><ellipse cx="369" cy="236" rx="7" ry="9" fill="#435058"/>
  <path d="M326 244L319 273 330 275M305 308Q326 317 345 302M271 269l-5 9m13-9-5 9m99-12-4 8" fill="none" stroke-width="3"/>
  <path d="M51 57Q90 38 146 61 165 77 154 103 145 123 109 126L115 149 92 126Q47 125 42 96 39 70 51 57Z" fill="white"/>
- <path d="M70 85h56M65 99h39" fill="none" stroke-width="4"/>
+ <path d="M72 78v24m16-24v24M73 90h14m15-2v14m0-23v2m14-4v16m0 7v2" fill="none" stroke-width="4"/>
  <path d="M26 664H303V776H26ZM324 664H614V776H324Z" fill="#e9e1d1"/>
  <path d="M29 770L140 679 217 722 283 673M329 755l83-70 69 42 113-52M329 772l85-64 68 42 128-62" fill="none"/>
  </g>

@@ -1,5 +1,6 @@
 from .i18n import tr
 from pathlib import Path
+from dataclasses import replace
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox,
                                QFileDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
                                QPushButton, QSpinBox, QVBoxLayout)
@@ -10,6 +11,7 @@ from .i18n import LANGUAGES
 class SettingsDialog(QDialog):
     def __init__(self, current, parent):
         super().__init__(parent)
+        self.current = current
         self.setWindowTitle(tr("Настройки обработки"))
         self.setMinimumWidth(530)
         layout = QVBoxLayout(self)
@@ -27,25 +29,12 @@ class SettingsDialog(QDialog):
             self.language.addItem(name,code)
         self.language.setCurrentIndex(max(0,self.language.findData(parent.config.value("language","auto"))))
         form.addRow(tr("Язык интерфейса"),self.language)
-        self.device = QComboBox()
-        for key, label in (("auto", tr("Авто · CUDA или CPU")), ("cuda", tr("Видеокарта NVIDIA")), ("cpu", tr("Процессор"))):
-            self.device.addItem(label, key)
-        self.device.setCurrentIndex(max(0, self.device.findData(current.device)))
-        form.addRow(tr("Устройство"), self.device)
+        form.addRow(tr("Устройство"), QLabel("FLUX · NVIDIA CUDA"))
         self.size = QComboBox()
-        for n in (384, 576, 768, 1024):
-            self.size.addItem(tr("{0} пикс.", n), n)
-        self.size.setCurrentIndex(max(0, self.size.findData(current.size)))
-        form.addRow(tr("Размер для модели"), self.size)
-        self.denoise = QCheckBox(tr("Убирать шум перед раскраской"))
-        self.denoise.setChecked(current.denoise)
-        form.addRow("", self.denoise)
-        self.sigma = QSpinBox()
-        self.sigma.setRange(1, 75)
-        self.sigma.setValue(current.sigma)
-        self.sigma.setEnabled(current.denoise)
-        self.denoise.toggled.connect(self.sigma.setEnabled)
-        form.addRow(tr("Сила шумоподавления"), self.sigma)
+        for label, pixels in (("0.5 MP",524288),("1 MP",1048576),("1.5 MP",1572864)):
+            self.size.addItem(label,pixels)
+        self.size.setCurrentIndex(max(0,self.size.findData(current.pixels)))
+        form.addRow(tr("Размер для модели"),self.size)
         row = QHBoxLayout()
         self.path = QLineEdit(str(current.models))
         browse = QPushButton(tr("Выбрать"))
@@ -57,12 +46,10 @@ class SettingsDialog(QDialog):
         self.note.setWordWrap(True)
         self.note.setObjectName("muted")
         layout.addWidget(self.note)
-        caption = tr("Скачать веса со страницы автора")
-        link = QLabel(f'<a style="color:#c8afff" href="https://github.com/qweasdd/manga-colorization-v2#automatic-colorization">{caption}</a>')
+        link = QLabel('<a style="color:#c8afff" href="https://huggingface.co/black-forest-labs/FLUX.2-klein-4B">FLUX.2 klein 4B · Black Forest Labs</a>')
         link.setOpenExternalLinks(True)
         layout.addWidget(link)
         self.path.textChanged.connect(self.check)
-        self.denoise.toggled.connect(self.check)
         self.buttons = QDialogButtonBox()
         self.buttons.addButton(tr("Сохранить"), QDialogButtonBox.AcceptRole)
         self.buttons.addButton(tr("Отмена"), QDialogButtonBox.RejectRole)
@@ -77,8 +64,8 @@ class SettingsDialog(QDialog):
             self.path.setText(path)
 
     def values(self):
-        return Settings(self.device.currentData(), self.size.currentData(), self.denoise.isChecked(),
-                        self.sigma.value(), Path(self.path.text()).expanduser().resolve())
+        return replace(self.current, renderer="flux", device="cuda", pixels=self.size.currentData(),
+                       models=Path(self.path.text()).expanduser().resolve())
 
     def check(self):
         missing = missing_weights(self.values())

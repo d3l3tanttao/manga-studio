@@ -13,6 +13,7 @@ class Canvas(QWidget):
     moved = Signal()
     picked = Signal(object)
     sampled = Signal(object)
+    selected_point = Signal(float,float,bool)
 
     def __init__(self):
         super().__init__()
@@ -38,6 +39,9 @@ class Canvas(QWidget):
         self.drag = ""
         self.last = QPointF()
         self.error = ""
+        self.object_overlay=QPixmap()
+        self.object_points=[]
+        self.show_objects=False
 
     def load_page(self, original, result, strokes, reset=True):
         self.original, self.result = original, result
@@ -108,6 +112,10 @@ class Canvas(QWidget):
             return
         pos = event.position()
         self.last = pos
+        if self.tool=='object' and self.page_rect().contains(pos) and event.button() in (Qt.LeftButton,Qt.RightButton):
+            x,y=self.normalized(pos)
+            self.selected_point.emit(x,y,event.button()==Qt.LeftButton and not bool(event.modifiers()&Qt.ShiftModifier))
+            return
         if event.button() == Qt.MiddleButton:
             self.drag = "pan"
         elif event.button() == Qt.LeftButton:
@@ -235,14 +243,17 @@ class Canvas(QWidget):
                 p.setClipPath(clip)
                 p.drawPixmap(rect, self.original, QRectF(self.original.rect()))
                 p.restore()
-            elif self.tool in ("paint","lasso"):
+            elif self.tool in ("paint","lasso","region_add","region_remove","region_lasso","region_box"):
                 color = QColor(self.color)
                 color.setAlpha(100)
                 pts = [QPointF(rect.x()+x*rect.width(),rect.y()+y*rect.height()) for x,y in self.current]
-                if self.tool == "lasso":
+                if self.tool in ("lasso","region_lasso","region_box"):
                     p.setBrush(color)
                     p.setPen(QPen(self.color,1,Qt.DashLine))
-                    p.drawPolygon(pts)
+                    if self.tool=='region_box':
+                        p.drawRect(QRectF(pts[0],pts[-1]).normalized())
+                    else:
+                        p.drawPolygon(pts)
                 else:
                     p.setPen(QPen(color,max(1,self.diameter*rect.width()/self.original.width()),Qt.SolidLine,Qt.RoundCap,Qt.RoundJoin))
                     if len(pts)>1:
@@ -251,7 +262,14 @@ class Canvas(QWidget):
                         p.drawPoint(pts[0])
             elif self.tool == "hint":
                 self.paint_stroke(p, rect, stroke)
-        if self.tool in ("hint","restore","erase","paint") and self.hover and rect.contains(self.hover):
+        if self.show_objects:
+            if not self.object_overlay.isNull():
+                p.drawPixmap(rect,self.object_overlay,QRectF(self.object_overlay.rect()))
+            for x,y,positive in self.object_points:
+                point=QPointF(rect.x()+x*rect.width(),rect.y()+y*rect.height())
+                p.setPen(QPen(QColor('white'),1));p.setBrush(QColor('#34bd91' if positive else '#ef6b7b'))
+                p.drawEllipse(point,5,5)
+        if self.tool in ("hint","restore","erase","paint","region_add","region_remove") and self.hover and rect.contains(self.hover):
             radius = self.diameter * rect.width() / (2*self.original.width())
             p.setBrush(Qt.NoBrush)
             for color, width in (("#24212a", 3), ("#ffffff", 1)):

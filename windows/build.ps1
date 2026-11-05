@@ -25,7 +25,7 @@ icon.save("windows/studio.ico", sizes=[(n, n) for n in (16, 24, 32, 48, 64, 128,
     $compiler = Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319\csc.exe"
     $source = Join-Path $PSScriptRoot "Launcher.cs"
     $icon = Join-Path $PSScriptRoot "studio.ico"
-    & $compiler /nologo /target:winexe /codepage:65001 /reference:System.Windows.Forms.dll /reference:System.Web.Extensions.dll "/win32icon:$icon" '/out:Manga Studio 1.2.exe' $source
+    & $compiler /nologo /target:winexe /codepage:65001 /reference:System.Windows.Forms.dll /reference:System.Web.Extensions.dll "/win32icon:$icon" '/out:Manga Studio 2.2.exe' $source
     if ($LASTEXITCODE -ne 0) { throw "Launcher build failed" }
 } finally {
     if ($null -eq $previousPlatform) {

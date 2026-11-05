@@ -10,7 +10,7 @@ from studio.window import Window
 def main():
     app = QApplication(sys.argv)
     app.setApplicationName("Manga Studio")
-    app.setApplicationVersion("1.2")
+    app.setApplicationVersion("2.2")
     app.setStyle("Fusion")
     app.setStyleSheet(STYLE)
     window = Window()

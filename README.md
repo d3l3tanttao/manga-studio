@@ -1,47 +1,52 @@
-# Manga Studio 1.2
+# Manga Studio 2.2
 
-An offline Windows desktop editor for colorizing manga. Choose a swatch, mark a location, compare the result and accept or discard the trial. The editor keeps the original page dimensions and can preserve its linework and halftones. [Инструкция на русском](README.ru.md)
+Local Windows manga coloring and redrawing with **Black Forest Labs FLUX.2 klein 4B** as the only rendering engine. Automatic coloring is a complete workflow without a reference or brush. [Русский](README.ru.md)
 
-**d3l3tanttao** directs the project. **OpenAI Codex** (AI assistant) implemented and tested the desktop application. The neural colorizer and its color-hint input come from **qweasdd/manga-colorization-v2**. The desktop UI, selection tools, color transfer onto the scan, project/version management and export were implemented for this application. The original application is MIT-licensed. [Contributions](CREDITS.md) · [MIT License](LICENSE) · [Third-party terms](LICENSING.md)
+Direction: **d3l3tanttao**. Application implementation: **OpenAI Codex (AI assistant)**. Model authorship is credited separately in [CREDITS.md](CREDITS.md). The original qweasdd/FFDNet contributions remain in project history, with their inference and installation paths retired.
 
-![Coloring the sample jacket in Manga Studio](docs/workspace-en.png)
+## Workflow
 
-## Install on Windows
+1. Add PNG/JPEG images or a chapter folder.
+2. Choose automatic coloring, reference coloring, or redraw. A reference is optional for redraw.
+3. Choose drawing fidelity (strict by default). Redraw has a separate latent transformation slider. These reduce changes; they do not guarantee identical lines or anatomy.
+4. Choose a reference role: rendering style, palette, lighting, or all. Palette mode strips the reference to swatches; lighting mode converts it to grayscale. Style and combined roles are model instructions, not perfect disentanglement.
+5. Generate and compare. Export numbered PNGs at original dimensions. Each result has its own immutable history entry.
+6. Correct skin, face, hands or clothing boundaries without painting a mask. Skin/clothing commands use whole-page context. Florence-2 locates faces/hands; FLUX processes enlarged contextual crops against the original and existing colors. Review the proposal and return to an earlier version if needed.
 
-Use Windows x64, Python 3.10 x64 with the Windows Python launcher, Git and PowerShell. Run these commands in the extracted repository. The setup script installs packages into a local virtual environment and builds a Windows launcher using the .NET Framework C# compiler. Allow several GB for the CUDA installation.
+New generation does not reapply old brush fills/material layers. Existing manual trials can still be saved from their cached result. Historical layers remain in prior versions.
 
-```powershell
-.\setup.ps1 -Device CPU
-& ".\Manga Studio 1.2.exe"
-```
+## Chapter guidance and limitations
 
-Click **Try the example**. The original jacket drawing and its prepared color guide are included. The sample editor, selection brush, lasso, palettes and export can be exercised without neural weights.
+The chapter uses a fixed color guide. An automatic first result becomes the guide only if it passes the contour check. This is not an anatomy or aesthetic assessment. You can explicitly choose an approved version as the guide, remove it, and describe character colors in advanced settings. Cross-pose character identity and color consistency remain imperfect.
 
-For automatic colorization of your own pages and AI hints, review the upstream terms and install the external engine and original checkpoints. To use the tested NVIDIA CUDA build:
+Detected text is restored from the original. Exterior white-paper protection is a heuristic and can be disabled for open contours or a deliberate background change. Detectors can miss or misidentify regions. Faces, fingers, skin and material boundaries still require visual review.
 
-```powershell
-.\setup.ps1 -Device CUDA -InstallEngine -DownloadWeights
-```
+Older projects open as separate 2.2 copies, preserving saved PNGs and history. Recoloring uses FLUX. References and correction inputs are copied inside the project and serialized with relative paths. The bundled demonstration is a historical cached result; its next generation uses FLUX.
 
-Choose `CPU` instead of `CUDA` for a processor-only installation. The engine checkout is pinned and both Google Drive downloads are SHA-256 checked before use. When downloading manually, put `generator.zip` and `net_rgb.pth` in `.models`, or select their folder in Settings. Keep the generator zip intact. The installed application runs offline. The small EXE starts the neighboring Python application and requires the installed runtime. [Upstream engine and weights](https://github.com/qweasdd/manga-colorization-v2)
+## Install
 
-## Color a jacket
+Version 2.2 is published as source. No new packaged Windows release accompanies this update; older release downloads belong to their stated versions. Setup builds the current launcher locally.
 
-1. Click **Set color** above the canvas. Pick a named swatch, click a quick color or enter a six-digit HEX value. Save a character's colors in the chapter palette. The selected color and brush diameter are remembered.
-2. For a local edit, choose **Selection only · brush** or **Selection only · lasso**. Paint or draw the boundary. The tint follows the ink and tone of the scan. Pixels outside the selection stay unchanged. Use the view selector to compare with the image before the trial.
-3. For a neural suggestion, choose **Guide the AI**, add one or more marks and click **Apply hints**. The model interprets the colors and can change nearby regions. The marks are hidden for comparison. **Accept version** writes a working PNG. **Discard trial** restores the previous state.
-4. Pick from **original** or **result** with the eyedropper. Hold **Alt** to sample temporarily, or use **[** and **]** to change brush diameter. **Ctrl+Z** and **Ctrl+Y** undo and redo strokes.
-5. Use **Export chapter** to write sequentially numbered PNGs into a new export directory. The progress dialog identifies unfinished pages. Chapter order, versions, trials, masks, swatches and the viewport are autosaved. Opening a 1.1 project creates a separate 1.2 copy.
-
-Settings includes 25 offline interface locales, automatic Windows language detection and right-to-left layout. Changing the language reopens the window and restores the active project. Native Windows file dialogs follow the operating system language. [Translation coverage and review status](docs/LOCALIZATION.md)
-
-## Development and verification
+Windows x64, Python 3.10 x64 with `py`, and NVIDIA CUDA are required for generation. Tested on RTX 5080 Laptop GPU, 16 GB VRAM. CPU installations can view, manually edit cached results and export.
 
 ```powershell
-.\.venv\Scripts\python.exe tests/check_release.py
-.\.venv\Scripts\python.exe tests/check_desktop.py
+.\setup.ps1
+& '.\Manga Studio 2.2.exe'
 ```
 
-The first suite runs without the external engine. It checks every catalog, renders the interface, exercises local color editing, pixel equality outside selections, cancellation, export and 1.1 migration. On Windows its font checks use installed system fonts. The second suite requires the pinned model and weights. It verifies chapter processing, hint trials, high-bit-depth scans, recovery, queue controls and CPU rendering. With CUDA available it also exercises GPU inference. Both suites use temporary chapters.
+Default setup installs the CUDA GUI runtime, isolated AI runtime, FLUX, CRAFT text detection and Florence-2 grounding. Weights occupy about 15.3 GiB; libraries need additional space. Inference is local and offline.
 
-Working projects are stored under `.chapters`. For backups, copy the whole chapter project directory and keep its source scans. Original sources, private project data, model weights and virtual environments are excluded from Git. [1.2.0 changes](CHANGELOG.md)
+For an existing CUDA runtime use `setup-ai.ps1`. `setup.ps1 -SkipDownload` skips models, `setup.ps1 -Device CPU` installs a viewer, and `setup.ps1 -InstallSelection` adds optional SAM manual tools. Source archives exclude runtimes, weights, user images, projects and the local `.runtime-path` pointer.
+
+## Validation
+
+```powershell
+.\.venv\Scripts\python.exe tests\check_release.py
+.\.venv\Scripts\python.exe tests\check_ai_ui.py
+.\.venv\Scripts\python.exe tests\check_flux_contract.py
+.\.venv\Scripts\python.exe tests\check_ai_desktop.py --output results\workflow --source source.jpg --reference style.jpg --chapter page1.jpg page2.jpg page3.jpg
+```
+
+The last command runs real GPU inference. Shared-runtime installations must use their runtime Python and set `MANGA_STUDIO_HOME` to its directory. [Quality evidence](docs/QUALITY-2.2.md). All 25 UI catalogs include the new controls; native-speaker review remains pending.
+
+Application code is MIT licensed. External models and libraries retain their own terms. [LICENSE](LICENSE), [LICENSING.md](LICENSING.md).

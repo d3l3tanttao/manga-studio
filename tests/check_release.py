@@ -46,17 +46,21 @@ def check_language(app,root,code,artifacts,deep):
     try:
         w.setStyleSheet(STYLE)
         w.resize(940,610);w.show();app.processEvents()
-        assert w.set_color_btn.text()==tr("Задать цвет")
+        assert w.set_color_btn.text()==tr("Перекрасить объект")
         assert (w.layoutDirection()==Qt.RightToLeft)==(code in ("ar","fa","ur"))
         assert w.demo_btn.isVisible() and w.demo_btn.text()==tr("Попробовать на примере")
         for k in (w.demo_btn,w.welcome_open):
             assert k.visibleRegion().contains(k.rect().center())
         w.demo_btn.click();idle(w)
-        assert w.original.size==(640,800) and w.engine.model is None
+        assert w.original.size==(640,800) and w.engine.ai is None
         for widget in (w.set_color_btn,w.export_btn,w.one_btn):
             assert w.rect().contains(widget.mapTo(w,widget.rect().center()))
-        w.set_color_btn.click()
-        assert w.canvas.tool=="hint" and w.hex_box.isVisibleTo(w)
+        w.open_objects();app.processEvents()
+        for widget in (w.object_hex,w.object_apply):
+            assert widget.visibleRegion().contains(widget.rect().center()),(code,widget.objectName())
+        assert w.object_parts.text()==tr('Раздельные части')
+        w.assign_color()
+        assert w.canvas.tool=="paint" and w.hex_box.isVisibleTo(w)
         settings=SettingsDialog(w.settings,w)
         assert settings.language.findData(code)>=0 and settings.language.count()==26
         settings.deleteLater()
@@ -112,7 +116,7 @@ def check_language(app,root,code,artifacts,deep):
         w.view.setCurrentIndex(w.view.findData("previous"))
         assert w.canvas.tool=="view" and np.array_equal(pixels(w.canvas.before),old)
         w.one_btn.click();idle(w)
-        assert p.trial is None and len(p.versions)==2 and w.engine.model is None
+        assert p.trial is None and len(p.versions)==2 and w.engine.ai is None
         assert np.array_equal(np.asarray(Image.open(version_path(w.project,p.version()))),probe)
         menu_ok(w,w.review_export)
         assert np.array_equal(np.asarray(Image.open(w.last_export/"0001.png")),probe)

@@ -11,13 +11,15 @@ from PySide6.QtWidgets import (QApplication, QColorDialog, QDialog, QDialogButto
                                QLabel, QListWidgetItem, QMainWindow, QMessageBox, QVBoxLayout)
 
 from . import layout
-from .chapter import (Page, atomic_file, cache_path, make_version, read_settings, settings_dict,
+from .chapter import (Page, atomic_file, cache_path, cached_prediction, make_version, read_settings, settings_dict,
                       source_hash, stamp, version_path, write_manifest)
 from .engine import EXTENSIONS, ROOT, Engine, Settings, missing_weights, open_page, page_order
 from .job import Batch, Export, Preview
 from .settings import SettingsDialog
 from .dialogs import choose_color, text_input
 from .i18n import configure, tr, language_code
+from .object_ui import ObjectEditor
+from .ai_ui import AIWorkspace
 
 
 def pixmap(image):
@@ -25,24 +27,27 @@ def pixmap(image):
     return QPixmap.fromImage(QImage(data, image.width, image.height, image.width * 3, QImage.Format_RGB888).copy())
 
 
-class Window(QMainWindow):
+class Window(AIWorkspace,ObjectEditor,QMainWindow):
     def __init__(self, config=None):
         super().__init__()
-        self.config = config if config is not None else QSettings(str(ROOT / ".studio-1.2.ini"), QSettings.IniFormat)
+        self.config = config if config is not None else QSettings(str(ROOT / ".studio-2.2.ini"), QSettings.IniFormat)
         if config is None and not self.config.allKeys():
-            old = QSettings(str(ROOT / ".studio.ini"), QSettings.IniFormat)
+            previous = ROOT / ".studio-2.1.ini"
+            if not previous.is_file():
+                previous = ROOT / ".studio-1.2.ini"
+            old = QSettings(str(previous), QSettings.IniFormat)
             for key in old.allKeys():
                 self.config.setValue(key,old.value(key))
         configure(self.config.value("language","auto"))
         self.restart_language = False
-        self.setWindowTitle(tr("Манга-студия 1.2"))
+        self.setWindowTitle("Manga Studio 2.2")
         self.setWindowIcon(QIcon(str(Path(__file__).with_name("mark.svg"))))
         self.setAcceptDrops(True)
         self.resize(1270, 800)
         self.setMinimumSize(940, 610)
-        self.settings = Settings(self.config.value("device", "auto"), self.config.value("size",576,type=int),
-                                 self.config.value("denoise",True,type=bool), self.config.value("sigma",25,type=int),
-                                 Path(self.config.value("models",str(ROOT / ".models"))))
+        self.settings = Settings(device="cuda", renderer="flux",
+                                 models=Path(self.config.value("models",str(ROOT / ".models"))),
+                                 pixels=self.config.value("pixels",1048576,type=int))
         self.home = Path(self.config.fileName()).parent / ".chapters"
         self.pages = {}
         self.items = {}
@@ -67,6 +72,8 @@ class Window(QMainWindow):
         self.thumbs = QTimer(self, interval=15)
         self.thumbs.timeout.connect(self.load_thumbnails)
         layout.build(self)
+        self.build_objects()
+        self.build_ai()
         self.canvas.color = QColor(self.config.value("brush_color","#287fe8"))
         self.diameter.setValue(self.config.value("brush_diameter",18,type=int))
         self.tabs.currentChanged.connect(self.change_tool)
@@ -98,12 +105,13 @@ class Window(QMainWindow):
         if self.project is None or self.loading:
             return True
         self.remember_view()
-        doc = {"format": "manga-studio/1.2", "pages":[p.serialize() for p in self.ordered()],
+        doc = {"format": "manga-studio/2.2", "pages":[p.serialize() for p in self.ordered()],
                "active":self.active, "folder":str(self.folder), "name":self.chapter_name, "palette":self.palette_colors,
                "order_custom":self.custom_order, "settings":settings_dict(self.settings),
                "last_export":str(self.last_export) if self.last_export else None, "export_files":self.export_files}
         try:
-            write_manifest(self.project,doc)
+            from .chapter import asset_paths
+            write_manifest(self.project,asset_paths(doc,self.project.parent,relative=True))
         except OSError as error:
             self.status.setText(tr("Автосохранение не удалось: {0}", error))
             return False
@@ -127,7 +135,7 @@ class Window(QMainWindow):
         self.config.sync()
 
     def clear_chapter(self):
-        if self.worker or not self.persist():
+        if self.worker or self.selection_job or not self.persist():
             return False
         self.loading = True
         self.serial += 1
@@ -171,24 +179,26 @@ class Window(QMainWindow):
         try:
             lock = self.acquire(path)
             data = json.loads(path.read_text(encoding="utf-8"))
-            if data["format"] not in ("manga-studio/1.1","manga-studio/1.2"):
+            if data["format"] not in ("manga-studio/1.1","manga-studio/1.2","manga-studio/2.0","manga-studio/2.1","manga-studio/2.2"):
                 raise ValueError(tr("Неподдерживаемый формат проекта."))
-            pages = [Page.load(d) for d in data["pages"]]
-            settings = read_settings(data["settings"])
             folder = Path(data["folder"])
-            if data["format"]=="manga-studio/1.1":
+            if data["format"]!="manga-studio/2.2":
                 target = self.home / uuid4().hex / "chapter.json"
                 new_lock = self.acquire(target)
                 try:
-                    for sub in ("colors","versions"):
+                    for sub in ("colors","versions","trials","references"):
                         if (path.parent/sub).is_dir():
                             shutil.copytree(path.parent/sub,target.parent/sub)
-                    write_manifest(target,{**data,"format":"manga-studio/1.2"})
+                    write_manifest(target,{**data,"format":"manga-studio/2.2"})
                 except Exception:
                     new_lock.unlock()
                     raise
                 lock.unlock()
                 lock,path = new_lock,target
+            from .chapter import asset_paths
+            data = asset_paths(data,path.parent)
+            pages = [Page.load(d) for d in data["pages"]]
+            settings = read_settings(data["settings"])
             if not self.clear_chapter():
                 lock.unlock()
                 return
@@ -253,7 +263,8 @@ class Window(QMainWindow):
                     self.begin(incoming[0])
                 for path in incoming:
                     seen.add(path)
-                    self.insert_page(Page(path,self.settings,source_stamp=stamp(path)),self.list.count())
+                    self.insert_page(Page(path,self.settings,source_stamp=stamp(path),
+                        mode="tint" if self.settings.renderer=="legacy" else "generated"),self.list.count())
             if not self.custom_order:
                 self.loading = True
                 selected = self.active
@@ -335,7 +346,8 @@ class Window(QMainWindow):
             if not p:
                 raise FileNotFoundError(src)
             # The bundled example was generated at the baseline settings.
-            p.settings = Settings(models=self.settings.models)
+            p.settings = Settings(models=self.settings.models,renderer="legacy")
+            p.mode = "tint"
             p.checksum = source_hash(p.path)
             self.folder = self.home.parent / "exports" / "Demo"
             with Image.open(src.with_name("jacket-color.png")) as image:
@@ -353,6 +365,8 @@ class Window(QMainWindow):
     def select_page(self,*args):
         if self.loading:
             return
+        if hasattr(self,'selection_serial'):
+            self.reset_object_selection()
         self.remember_view()
         item = self.list.currentItem()
         self.active = item.data(Qt.UserRole) if item else None
@@ -363,6 +377,10 @@ class Window(QMainWindow):
         original,result = QPixmap(),QPixmap()
         self.canvas.error = ""
         if p:
+            v = p.version()
+            if v and version_path(self.project,v).is_file():
+                with Image.open(version_path(self.project,v)) as saved:
+                    result = pixmap(saved.convert("RGB"))
             try:
                 p.inspect_source()
                 self.original = open_page(p.path)
@@ -374,6 +392,8 @@ class Window(QMainWindow):
             except (OSError,ValueError) as error:
                 p.error = str(error) if p.path.is_file() else tr("Исходник перемещён. Нажмите «Найти исходники».")
                 self.canvas.error = p.error
+                if not result.isNull():
+                    original = result.copy()
         self.loading = True
         self.canvas.load_page(original,result,p.strokes if p else [])
         self.canvas.before = QPixmap()
@@ -396,6 +416,7 @@ class Window(QMainWindow):
         self.canvas.report_scale()
         self.loading = False
         self.sync_controls()
+        self.refresh_objects()
         if p and self.original is not None and not self.is_saved(p):
             self.request_preview()
         self.refresh()
@@ -403,10 +424,10 @@ class Window(QMainWindow):
 
     def is_saved(self,p):
         v = p.version()
-        return bool(not p.trial and v and p.source_stamp and v["signature"] == p.signature() and version_path(self.project,v).is_file())
+        return bool(not p.trial and v and (p.source_stamp or p.checksum) and v["signature"] == p.signature() and version_path(self.project,v).is_file())
 
     def has_color(self,p):
-        return bool(self.project and cache_path(self.project,p.prediction_key()).is_file())
+        return bool(self.project and cached_prediction(self.project,p).is_file())
 
     def state(self,p):
         if self.processing == p.uid:
@@ -447,12 +468,14 @@ class Window(QMainWindow):
         chip.fill(self.canvas.color)
         self.swatch.setText(tr("Выбрать цвет"))
         self.swatch.setIcon(QIcon(chip))
-        self.set_color_btn.setIcon(QIcon(chip))
+        self.set_color_btn.setIcon(QIcon())
         self.loading = False
+
+        self.sync_ai()
 
     def refresh(self):
         p = self.current()
-        free = self.worker is None
+        free = self.worker is None and self.selection_job is None
         editable = bool(p and self.original is not None and free)
         pages = self.ordered()
         self.count.setText(tr("Страницы · {0}", len(pages)))
@@ -475,17 +498,14 @@ class Window(QMainWindow):
                 self.one_btn.setText(tr("Принять версию"))
                 self.one_btn.setEnabled(free and self.preview_job is None and not self.preview_timer.isActive())
             else:
-                accepted = p.version() or {}
-                old_hints = [s for s in accepted.get("strokes",[]) if s["kind"]=="hint"]
-                hints = [s for s in p.strokes if s.kind=="hint"]
-                n = max(1,len(hints)-len(old_hints))
-                self.one_btn.setText(tr("Применить подсказки · {0}", n))
+                self.one_btn.setText(tr("Раскрасить страницу"))
         self.set_color_btn.setEnabled(editable)
         self.color_note.setText(tr("Отметьте область на странице.") if self.canvas.tool!="view" else tr("Выберите оттенок и отметьте место."))
         self.hex_box.setEnabled(editable)
         self.view.model().item(3).setEnabled(bool(p and p.trial))
         self.export_btn.setEnabled(bool(free and pages))
-        self.stop_btn.setVisible(isinstance(self.worker,Batch))
+        self.stop_btn.setVisible(isinstance(self.worker,Batch) or self.selection_job is not None)
+        self.stop_btn.setText(tr('Отмена') if self.selection_job is not None else tr('Остановить очередь'))
         self.progress.setVisible(not free)
         self.continue_btn.setVisible(Path(self.config.value("last_project","") or "__missing__").is_file())
         self.state_label.setText(self.state(p) if p else tr("Выберите страницу"))
@@ -515,6 +535,13 @@ class Window(QMainWindow):
         self.guides.setEnabled(self.view.isEnabled() and self.view.currentData() in ("compare","previous"))
         for b in (self.fit_btn,self.minus,self.plus,self.percent):
             b.setEnabled(self.original is not None)
+        if hasattr(self,'object_apply'):
+            self.object_apply.setEnabled(editable and self.selection_mask is not None)
+            self.object_list.setEnabled(editable)
+            if self.tabs.currentIndex()==self.object_tab:
+                self.undo_btn.setEnabled(editable and bool(p.layer_history))
+                self.redo_btn.setEnabled(editable and bool(p.layer_redo))
+        self.refresh_ai(editable)
 
     def change_view(self,*args):
         if self.loading:
@@ -543,12 +570,12 @@ class Window(QMainWindow):
             if not p.version():
                 return
             key = p.version()["prediction"]
-        cache = cache_path(self.project,key)
+        cache = cached_prediction(self.project,p) if p.trial else cache_path(self.project,key)
         if p.original_base and not cache.is_file():
             cache = None
         elif not cache.is_file():
             return
-        job = Preview(self.serial,self.original,cache,p.mode,p.intensity,p.strokes)
+        job = Preview(self.serial,self.original,cache,p.mode,p.intensity,p.strokes,p.layers,p.original_base)
         self.preview_job = job
         job.rendered.connect(self.accept_preview)
         job.failed.connect(self.preview_failed)
@@ -608,6 +635,15 @@ class Window(QMainWindow):
 
     def change_tool(self,*args):
         self.canvas.tool = self.tool.currentData() if self.tabs.currentIndex()==1 and not self.worker else "view"
+        if hasattr(self,'object_tab') and self.tabs.currentIndex()==self.object_tab and not self.worker:
+            self.canvas.tool=self.object_tool.currentData()
+        self.canvas.show_objects=hasattr(self,'object_tab') and self.tabs.currentIndex()==self.object_tab
+        if hasattr(self,"ai_manual") and not self.ai_manual.isChecked():
+            self.canvas.tool = "view"
+            self.canvas.show_objects = False
+        if hasattr(self,'object_apply'):
+            self.object_apply.setVisible(self.canvas.show_objects)
+            self.run_btn.setVisible(not self.canvas.show_objects)
         self.canvas.setCursor(Qt.CrossCursor if self.canvas.tool!="view" else Qt.OpenHandCursor)
         self.canvas.current = []
         self.canvas.sample_source = self.sample_from.currentData()
@@ -624,7 +660,8 @@ class Window(QMainWindow):
     def pick_color(self,color):
         self.sample_color(color)
         if self.tool.currentData() not in ("hint","paint","lasso"):
-            self.tool.setCurrentIndex(self.tool.findData("hint"))
+            target = "paint"
+            self.tool.setCurrentIndex(self.tool.findData(target))
 
     def sample_color(self,color):
         self.canvas.color = color
@@ -635,10 +672,12 @@ class Window(QMainWindow):
         self.refresh()
 
     def assign_color(self):
+        self.ai_manual.setChecked(True)
         self.right.show()
         self.tabs.setCurrentIndex(1)
         if self.tool.currentData() not in ("hint","paint","lasso"):
-            self.tool.setCurrentIndex(self.tool.findData("hint"))
+            target = "paint"
+            self.tool.setCurrentIndex(self.tool.findData(target))
         self.hex_box.setFocus()
         self.hex_box.selectAll()
         self.refresh()
@@ -721,6 +760,8 @@ class Window(QMainWindow):
             self.persist()
 
     def add_stroke(self,s):
+        if self.handle_region_stroke(s):
+            return
         p = self.current()
         if p and not self.worker:
             self.begin_trial(p)
@@ -743,7 +784,14 @@ class Window(QMainWindow):
                 self.status.setText(tr("Проба готова. Сравните и примите или отмените."))
 
     def undo(self):
+        if self.undo_selection():return
         p = self.current()
+        if p and self.tabs.currentIndex()==self.object_tab and p.layer_history and not self.worker:
+            from .materials import MaterialLayer
+            self.begin_trial(p)
+            p.layer_redo.append([layer.serialize() for layer in p.layers])
+            p.layers=[MaterialLayer.load(d) for d in p.layer_history.pop()]
+            self.reset_object_selection();self.refresh_objects();self.changed();return
         if p and p.strokes and not self.worker:
             self.begin_trial(p)
             p.redo.append(p.strokes.pop())
@@ -751,7 +799,14 @@ class Window(QMainWindow):
             self.changed()
 
     def redo(self):
+        if self.undo_selection(True):return
         p = self.current()
+        if p and self.tabs.currentIndex()==self.object_tab and p.layer_redo and not self.worker:
+            from .materials import MaterialLayer
+            self.begin_trial(p)
+            p.layer_history.append([layer.serialize() for layer in p.layers])
+            p.layers=[MaterialLayer.load(d) for d in p.layer_redo.pop()]
+            self.reset_object_selection();self.refresh_objects();self.changed();return
         if p and p.redo and not self.worker:
             self.begin_trial(p)
             p.strokes.append(p.redo.pop())
@@ -767,11 +822,12 @@ class Window(QMainWindow):
             self.config.setValue("language",language)
             new_settings = dialog.values()
             if new_settings != initial:
-                self.settings = new_settings
+                from dataclasses import replace
+                self.settings = replace(new_settings,correction="",base="",base_hash="")
                 for k,val in settings_dict(self.settings).items():
                     self.config.setValue(k,val)
                 for p in self.pages.values():
-                    p.settings = self.settings
+                    p.settings = replace(p.settings,models=new_settings.models,pixels=new_settings.pixels,device="cuda")
             self.config.sync()
             self.changed()
             if language != previous:
@@ -785,9 +841,10 @@ class Window(QMainWindow):
         lay = QVBoxLayout(dialog)
         for role, who in ((tr("Направление проекта"),"d3l3tanttao"),
                           (tr("Разработка приложения, интерфейса и тестов"),"OpenAI Codex"),
-                          (tr("Движок раскраски"),"qweasdd / manga-colorization-v2"),
-                          (tr("Шумоподавление"),"Matias Tassano / FFDNet")):
+                          (tr("Движок раскраски"),"Black Forest Labs / FLUX.2 klein 4B")):
             lay.addWidget(layout.label(role+" · "+who))
+        lay.addWidget(layout.label("1.x / 2.0: qweasdd · Matias Tassano / FFDNet"))
+        lay.addWidget(layout.label("EasyOCR · Jaided AI; CRAFT · Clova AI"))
         lay.addWidget(layout.label(tr("Полный список компонентов см. в CREDITS.md.")))
         lay.addWidget(layout.button(tr("Закрыть"),dialog.accept))
         dialog.exec()
@@ -858,11 +915,17 @@ class Window(QMainWindow):
     def start_selected(self):
         if self.current():
             p = self.current()
+            if not p.trial and p.settings.correction:
+                from dataclasses import replace
+                p.settings = replace(p.settings,correction="",base="",base_hash="")
             prepare = p.trial and not p.original_base and not self.has_color(p)
             self.start([p],bool(prepare))
 
     def start(self,pages,preview_only=False):
-        if self.worker or not pages:
+        if self.worker or self.selection_job or not pages:
+            return
+        if any(p.settings.generation=="reference" and not p.settings.reference and p.settings.renderer!="legacy" for p in pages):
+            self.status.setText(tr("Добавьте референс"))
             return
         if any(not p.original_base and not self.has_color(p) and missing_weights(p.settings) for p in pages):
             self.edit_settings()
@@ -892,6 +955,8 @@ class Window(QMainWindow):
     def on_saved(self,uid,payload):
         p = self.pages[uid]
         p.source_stamp,p.checksum,version = payload
+        if version.get("settings",{}).get("renderer", "legacy") != "legacy":
+            p.apply_options(version)
         p.trial = None
         p.versions.append(version)
         p.selected = len(p.versions)-1
@@ -939,11 +1004,17 @@ class Window(QMainWindow):
             self.close()
 
     def stop(self):
+        if self.selection_job:
+            self.reset_object_selection()
+            self.stop_btn.setEnabled(False)
+            self.object_state.setText(tr('Отмена'))
+            self.refresh()
+            return
         if isinstance(self.worker,Batch):
             self.worker.requestInterruption()
             self.stop_btn.setEnabled(False)
             self.stopping = True
-            self.status.setText(tr("Остановка после текущей страницы…"))
+            self.status.setText(tr("Отмена"))
 
     def review_export(self):
         pages = self.ordered()
@@ -988,11 +1059,15 @@ class Window(QMainWindow):
         self.export_files = {p.uid: {"version": p.version()["id"], "number": i}
                              for i,p in enumerate(self.ordered(),1)}
         self.status.setText(tr("Экспортировано PNG: {0} · {1}", len(self.pages), folder))
-        self.tabs.setCurrentIndex(2)
+        if self.ai_manual.isChecked():
+            self.tabs.setCurrentIndex(2)
         self.persist()
 
     def closeEvent(self,event):
-        if self.worker or self.preview_job:
+        if self.selection_job:
+            self.closing=True;self.selection_serial+=1
+            self.selection_job.requestInterruption();event.ignore()
+        elif self.worker or self.preview_job:
             self.closing = True
             self.preview_timer.stop()
             self.stop()

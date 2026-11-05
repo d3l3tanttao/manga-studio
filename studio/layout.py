@@ -74,7 +74,7 @@ def build(w):
     icon.setPixmap(w.windowIcon().pixmap(36, 36))
     head.addWidget(icon)
     head.addWidget(label(tr("Манга-студия"), "brand"))
-    head.addWidget(label("1.2", "badge"))
+    head.addWidget(label("2.2", "badge"))
     head.addStretch()
     w.device = label(tr("Локально"), "badge")
     head.addWidget(w.device)
@@ -230,7 +230,7 @@ def build(w):
     edit.addWidget(w.color_note)
     edit.addWidget(label(tr("Способ применения"),"section"))
     w.tool = QComboBox()
-    for title, code in ((tr("Перемещение"),"view"),(tr("Подсказать ИИ"),"hint"),(tr("Только в выделении · кисть"),"paint"),
+    for title, code in ((tr("Перемещение"),"view"),(tr("Только в выделении · кисть"),"paint"),
                         (tr("Только в выделении · лассо"),"lasso"),(tr("Вернуть оригинал"),"restore"),
                         (tr("Снять восстановление"),"erase"),(tr("Пипетка"),"pick")):
         w.tool.addItem(title,code)

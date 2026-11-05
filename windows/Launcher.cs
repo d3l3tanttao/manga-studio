@@ -9,8 +9,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("Манга-студия")]
 [assembly: AssemblyDescription("Локальная раскраска манги")]
-[assembly: AssemblyVersion("1.2.0.0")]
-[assembly: AssemblyFileVersion("1.2.0.0")]
+[assembly: AssemblyVersion("2.2.0.0")]
+[assembly: AssemblyFileVersion("2.2.0.0")]
 
 internal static class Launcher
 {
@@ -35,7 +35,7 @@ internal static class Launcher
         }
         catch (Exception error)
         {
-            MessageBox.Show(error.Message, "Manga Studio 1.2", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(error.Message, "Manga Studio 2.2", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 

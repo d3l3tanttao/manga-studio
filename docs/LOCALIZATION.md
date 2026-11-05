@@ -1,6 +1,6 @@
 # Interface translations
 
-Manga Studio ships 188 application messages for each of 25 locales. Catalogs are UTF-8 JSON files in `studio/locales`. Chapter data stores stable action identifiers, RGB values and normalized coordinates independently of the UI language. User-provided page, version and swatch names remain as entered.
+Manga Studio ships 289 application messages for each of 25 locales. Catalogs are UTF-8 JSON files in `studio/locales`. Chapter data stores stable action identifiers, RGB values and normalized coordinates independently of the UI language. User-provided page, version and swatch names remain as entered.
 
 | Locale | Interface | Technical UI check | Jacket editing scenario | Native-speaker review |
 |---|---|---|---|---|
@@ -37,10 +37,18 @@ Technical checks cover equal message sets, valid substitutions, glyph availabili
 | Action | Meaning |
 |---|---|
 | Set color | Open the editor, choose an active swatch and mark a location on the scan. |
-| Guide the AI | Provide approximate color hints to the engine. |
+| Guide the AI (historical) | Legacy hint terminology retained for old project data; not an active 2.2 tool. |
 | Selection only | Tint the pixels inside the painted or lasso mask. |
-| Apply hints | Recompute a trial preview. It does not add a saved version. |
+| Apply hints (historical) | Legacy operation, no longer an active engine path. |
 | Accept version | Commit the trial as a working PNG that can be exported. |
 | Discard trial | Restore the page state before the trial. |
 
 Run `python tests/check_release.py` in the installed environment to verify catalog changes. Numbers in braces are substitutions. Keep filename patterns, HEX codes, component names and placeholder indices intact.
+
+## Object tools in 2.0
+
+All 25 catalogs include the object, material, protection, reference and quality controls. New translations are Codex-authored drafts. Completeness, format placeholders and Windows glyph coverage are checked automatically. Native-speaker review remains pending. The application does not translate online at runtime.
+
+## FLUX controls in 2.2
+
+All 25 catalogs include drawing fidelity, separate reference roles, brushless corrections and chapter-guide controls. `tests/check_ai_ui.py` also verifies compact primary-panel layouts. These are translation drafts with technical validation, not native-speaker certification.

@@ -1,6 +1,6 @@
 """Chapter state, immutable working versions and publication of a complete export."""
 from .i18n import tr
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 import hashlib
 import json
 import os
@@ -16,14 +16,60 @@ from PIL import Image
 
 from .color import transfer
 from .engine import Settings, Stroke
+from .materials import MaterialLayer, compose_layers
 
 
 def settings_dict(settings):
-    return {**asdict(settings), "models": str(settings.models)}
+    values = {**asdict(settings), "models": str(settings.models)}
+    # Defaults introduced after 2.1 must not invalidate old version signatures.
+    for item in fields(Settings):
+        if item.name in ("fidelity", "reference_role", "correction", "base", "base_hash", "palette_notes", "protect_paper") and values[item.name] == ("balanced" if item.name=="fidelity" else item.default):
+            values.pop(item.name)
+    if settings.renderer == "legacy":
+        for key in ("renderer", "generation", "reference", "reference_hash", "anchor", "anchor_hash", "seed",
+                    "precision", "freedom", "pixels", "notes", "protect_text", "chapter_colors",
+                    "fidelity", "reference_role", "correction", "base", "base_hash", "palette_notes", "protect_paper"):
+            values.pop(key, None)
+    if values.get("pipeline") == "legacy":
+        values.pop("pipeline")
+    if values.get("quality") == "standard":
+        values.pop("quality")
+    return values
 
 
 def read_settings(values):
-    return Settings(**{**values, "models": Path(values["models"])})
+    return Settings(**{"pipeline":"legacy", "renderer":"legacy", "fidelity":"balanced", **values, "models": Path(values.get("models", Settings().models))})
+
+
+def asset_paths(value, base, relative=False):
+    """Project-owned references travel with the project; source files stay external."""
+    if isinstance(value,list):
+        return [asset_paths(v,base,relative) for v in value]
+    if not isinstance(value,dict):
+        return value
+    result = {}
+    for key,item in value.items():
+        if key in ("reference","anchor","base") and isinstance(item,str) and item:
+            path = Path(item)
+            if relative and path.is_absolute():
+                try:
+                    item = path.resolve().relative_to(base.resolve()).as_posix()
+                except ValueError:
+                    pass
+            elif not relative and not path.is_absolute():
+                item = str((base/path).resolve())
+        result[key] = asset_paths(item,base,relative)
+    return result
+
+
+def identity_settings(settings):
+    values = settings_dict(settings)
+    if settings.renderer != "legacy":
+        values.pop("models",None)
+        for field in ("reference","anchor","base"):
+            if values.get(field+"_hash"):
+                values[field] = "sha256:"+values[field+"_hash"]
+    return values
 
 
 def stamp(path):
@@ -84,6 +130,10 @@ class Page:
     trial: dict | None = None
     original_base: bool = False
     version_name: str = ""
+    layers: list = field(default_factory=list)
+    regions: list = field(default_factory=list)
+    layer_history: list = field(default_factory=list)
+    layer_redo: list = field(default_factory=list)
 
     def inspect_source(self):
         current = stamp(self.path)
@@ -96,15 +146,23 @@ class Page:
                    "settings": settings_dict(self.settings)}
         if self.original_base:
             options["original_base"] = True
+        if self.layers:
+            options["layers"] = [layer.serialize() for layer in self.layers]
+        if self.regions:
+            options["regions"] = self.regions
         return options
 
     def prediction_key(self):
         hints = [asdict(s) for s in self.strokes if s.kind == "hint"]
-        inputs = [self.uid, self.checksum or self.source_stamp, settings_dict(self.settings), hints]
+        inputs = [self.uid, self.checksum or self.source_stamp, identity_settings(self.settings), hints]
+        if self.settings.renderer != "legacy":
+            inputs.append("manga-studio/generation-2.2-v2")
         return digest(inputs + ["paper"] if self.original_base else inputs)
 
     def signature(self):
-        return digest([self.checksum or self.source_stamp, self.options()])
+        options = self.options()
+        options["settings"] = identity_settings(self.settings)
+        return digest([self.checksum or self.source_stamp, options])
 
     def version(self):
         return self.versions[self.selected] if 0 <= self.selected < len(self.versions) else None
@@ -114,6 +172,10 @@ class Page:
         self.settings = read_settings(data["settings"])
         self.original_base = data.get("original_base", False)
         self.strokes = strokes_from(data["strokes"])
+        self.layers = [MaterialLayer.load(layer) for layer in data.get("layers",[])]
+        self.regions = data.get("regions",[])
+        self.layer_history = []
+        self.layer_redo = []
         self.redo = []
 
     def serialize(self):
@@ -138,9 +200,25 @@ class Page:
         return p
 
 
-def compose(original, prediction, mode, intensity, strokes):
+def cached_prediction(project, page):
+    current = cache_path(project,page.prediction_key())
+    version = page.version()
+    if current.is_file() or not page.trial or not version:
+        return current
+    # A manual edit of an old generated PNG must not accidentally rerun a new model contract.
+    previous = read_settings(version["settings"])
+    old_hints = [v for v in version.get("strokes",[]) if v["kind"]=="hint"]
+    new_hints = [asdict(v) for v in page.strokes if v.kind=="hint"]
+    if identity_settings(previous)==identity_settings(page.settings) and old_hints==new_hints:
+        saved = cache_path(project,version["prediction"])
+        if saved.is_file():
+            return saved
+    return current
+
+
+def compose(original, prediction, mode, intensity, strokes, layers=(), original_base=False):
     gray = np.asarray(original.convert("L"))
-    rgb = transfer(gray, prediction, mode, intensity)
+    rgb = np.asarray(original.convert("RGB")).copy() if original_base else transfer(gray, prediction, mode, intensity)
     # Work on the selection's bounding box, keeping every pixel outside it unchanged.
     height, width = gray.shape
     for s in strokes:
@@ -164,7 +242,7 @@ def compose(original, prediction, mode, intensity, strokes):
             cv2.circle(mask,tuple(pts[0]),diameter//2,255,-1)
             cv2.polylines(mask,[pts],False,255,diameter)
         swatch = np.uint8([[s.color]])
-        tinted = transfer(gray[region],swatch,mode,intensity)
+        tinted = transfer(gray[region],swatch,"tint" if mode=="generated" else mode,intensity)
         np.copyto(rgb[region],tinted,where=(mask!=0)[:,:,None])
     local = [s for s in strokes if s.kind in ("restore", "erase")]
     if local:
@@ -178,6 +256,8 @@ def compose(original, prediction, mode, intensity, strokes):
             if len(pts) > 1:
                 cv2.polylines(mask, [pts], False, value, diameter)
         np.copyto(rgb, np.asarray(original), where=(mask != 0)[:, :, None])
+    if layers:
+        rgb = compose_layers(original,rgb,layers)
     return Image.fromarray(rgb)
 
 
@@ -190,7 +270,7 @@ def version_path(project, version):
 
 
 def make_version(page, project, original, prediction):
-    output = compose(original, prediction, page.mode, page.intensity, page.strokes)
+    output = compose(original, prediction, page.mode, page.intensity, page.strokes, page.layers, page.original_base)
     version = {**page.options(), "signature": page.signature(), "prediction": page.prediction_key(),
                "id": uuid4().hex, "name": page.version_name}
     atomic_file(version_path(project, version), lambda path: output.save(path, format="PNG"))

@@ -1,6 +1,10 @@
 .venv/
+.reference-venv/
+.ai-jobs/
 .models/
 .upstream/
+.sam2/
+.sam2-src/
 __pycache__/
 .studio.ini
 .chapters/
